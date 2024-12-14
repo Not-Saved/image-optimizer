@@ -1,0 +1,408 @@
+// src/index.ts
+import { createHash } from "crypto";
+import { promises } from "fs";
+import { join } from "path";
+var AVIF = "image/avif";
+var WEBP = "image/webp";
+var PNG = "image/png";
+var JPEG = "image/jpeg";
+var GIF = "image/gif";
+var SVG = "image/svg+xml";
+var ICO = "image/x-icon";
+var TIFF = "image/tiff";
+var BMP = "image/bmp";
+var CACHE_VERSION = 4;
+var BLUR_IMG_SIZE = 8;
+var _sharp;
+function getSharp(sharp, concurrency) {
+  if (_sharp) {
+    return _sharp;
+  }
+  try {
+    _sharp = sharp;
+    if (_sharp && sharp.concurrency() > 1) {
+      const divisor = process.env.NODE_ENV === "development" ? 4 : 2;
+      _sharp.concurrency(
+        concurrency ?? Math.floor(Math.max(_sharp.concurrency() / divisor, 1))
+      );
+    }
+  } catch (e) {
+    throw e;
+  }
+  return _sharp;
+}
+async function imageOptimizer(sharp, imageUpstream, params) {
+  const { quality, width, mimeType } = params;
+  const { buffer: upstreamBuffer } = imageUpstream;
+  const maxAge = getMaxAge(imageUpstream.cacheControl);
+  const upstreamType = detectContentType(upstreamBuffer) || imageUpstream.contentType?.toLowerCase().trim();
+  if (upstreamType) {
+    if (upstreamType.startsWith("image/svg")) {
+      throw new Error(
+        '"url" parameter is valid but image type svg is not allowed'
+      );
+    }
+    if (!upstreamType.startsWith("image/") || upstreamType.includes(",")) {
+      throw new Error("The requested resource isn't a valid image.");
+    }
+  }
+  let contentType;
+  if (mimeType) {
+    contentType = mimeType;
+  } else {
+    contentType = JPEG;
+  }
+  try {
+    let optimizedBuffer = await optimizeImage({
+      sharp,
+      buffer: upstreamBuffer,
+      contentType,
+      quality,
+      width
+    });
+    return {
+      buffer: optimizedBuffer,
+      contentType,
+      maxAge: Math.max(maxAge, 60)
+    };
+  } catch (error) {
+    if (upstreamType) {
+      return {
+        buffer: upstreamBuffer,
+        contentType: upstreamType,
+        maxAge: 60,
+        error
+      };
+    } else {
+      throw new Error(
+        "Unable to optimize image and unable to fallback to upstream image"
+      );
+    }
+  }
+}
+async function optimizeImage({
+  sharp,
+  buffer,
+  contentType,
+  quality,
+  width,
+  height,
+  concurrency,
+  limitInputPixels,
+  sequentialRead,
+  timeoutInSeconds
+}) {
+  const _sharp2 = getSharp(sharp);
+  const transformer = _sharp2(buffer, {
+    limitInputPixels,
+    sequentialRead: sequentialRead ?? void 0
+  }).timeout({
+    seconds: timeoutInSeconds ?? 7
+  }).rotate();
+  if (height) {
+    transformer.resize(width, height);
+  } else {
+    transformer.resize(width, void 0, {
+      withoutEnlargement: true
+    });
+  }
+  if (contentType === AVIF) {
+    transformer.avif({
+      quality: Math.max(quality - 20, 1),
+      effort: 3
+    });
+  } else if (contentType === WEBP) {
+    transformer.webp({ quality });
+  } else if (contentType === PNG) {
+    transformer.png({ quality });
+  } else if (contentType === JPEG) {
+    transformer.jpeg({ quality, mozjpeg: true });
+  }
+  const optimizedBuffer = await transformer.toBuffer();
+  return optimizedBuffer;
+}
+async function fetchExternalImage(href) {
+  const res = await fetch(href, {
+    signal: AbortSignal.timeout(7e3)
+  }).catch((err) => err);
+  if (res instanceof Error) {
+    const err = res;
+    if (err.name === "TimeoutError") {
+      throw new Error(
+        '"url" parameter is valid but upstream response timed out'
+      );
+    }
+    throw err;
+  }
+  if (!res.ok) {
+    throw new Error(
+      '"url" parameter is valid but upstream response is invalid'
+    );
+  }
+  const buffer = Buffer.from(await res.arrayBuffer());
+  const contentType = res.headers.get("Content-Type");
+  const cacheControl = res.headers.get("Cache-Control");
+  return { buffer, contentType, cacheControl };
+}
+function parseCacheControl(str) {
+  const map = /* @__PURE__ */ new Map();
+  if (!str) {
+    return map;
+  }
+  for (let directive of str.split(",")) {
+    let [key, value] = directive.trim().split("=", 2);
+    key = key.toLowerCase();
+    if (value) {
+      value = value.toLowerCase();
+    }
+    map.set(key, value);
+  }
+  return map;
+}
+function getMaxAge(str) {
+  const map = parseCacheControl(str);
+  if (map) {
+    let age = map.get("s-maxage") || map.get("max-age") || "";
+    if (age.startsWith('"') && age.endsWith('"')) {
+      age = age.slice(1, -1);
+    }
+    const n = parseInt(age, 10);
+    if (!isNaN(n)) {
+      return n;
+    }
+  }
+  return 0;
+}
+function detectContentType(buffer) {
+  if ([255, 216, 255].every((b, i) => buffer[i] === b)) {
+    return JPEG;
+  }
+  if ([137, 80, 78, 71, 13, 10, 26, 10].every(
+    (b, i) => buffer[i] === b
+  )) {
+    return PNG;
+  }
+  if ([71, 73, 70, 56].every((b, i) => buffer[i] === b)) {
+    return GIF;
+  }
+  if ([82, 73, 70, 70, 0, 0, 0, 0, 87, 69, 66, 80].every(
+    (b, i) => !b || buffer[i] === b
+  )) {
+    return WEBP;
+  }
+  if ([60, 63, 120, 109, 108].every((b, i) => buffer[i] === b)) {
+    return SVG;
+  }
+  if ([60, 115, 118, 103].every((b, i) => buffer[i] === b)) {
+    return SVG;
+  }
+  if ([0, 0, 0, 0, 102, 116, 121, 112, 97, 118, 105, 102].every(
+    (b, i) => !b || buffer[i] === b
+  )) {
+    return AVIF;
+  }
+  if ([0, 0, 1, 0].every((b, i) => buffer[i] === b)) {
+    return ICO;
+  }
+  if ([73, 73, 42, 0].every((b, i) => buffer[i] === b)) {
+    return TIFF;
+  }
+  if ([66, 77].every((b, i) => buffer[i] === b)) {
+    return BMP;
+  }
+  return null;
+}
+var ImageOptimizerCache = class {
+  static validateParams(acceptHeader, query, isDev) {
+    const imageData = {
+      deviceSizes: [],
+      imageSizes: [],
+      domains: [],
+      minimumCacheTTL: 60,
+      formats: ["image/webp"]
+    };
+    const {
+      deviceSizes = [],
+      imageSizes = [],
+      domains = [],
+      minimumCacheTTL = 60,
+      formats = ["image/webp"]
+    } = imageData;
+    const remotePatterns = [];
+    const localPatterns = [];
+    const { url, w, q } = query;
+    let href;
+    if (!url) {
+      return { errorMessage: '"url" parameter is required' };
+    } else if (Array.isArray(url)) {
+      return { errorMessage: '"url" parameter cannot be an array' };
+    }
+    if (url.length > 3072) {
+      return { errorMessage: '"url" parameter is too long' };
+    }
+    if (url.startsWith("//")) {
+      return {
+        errorMessage: '"url" parameter cannot be a protocol-relative URL (//)'
+      };
+    }
+    let isAbsolute;
+    if (url.startsWith("/")) {
+      href = url;
+      isAbsolute = false;
+    } else {
+      let hrefParsed;
+      try {
+        hrefParsed = new URL(url);
+        href = hrefParsed.toString();
+        isAbsolute = true;
+      } catch (_error) {
+        return { errorMessage: '"url" parameter is invalid' };
+      }
+      if (!["http:", "https:"].includes(hrefParsed.protocol)) {
+        return { errorMessage: '"url" parameter is invalid' };
+      }
+    }
+    if (!w) {
+      return { errorMessage: '"w" parameter (width) is required' };
+    } else if (Array.isArray(w)) {
+      return { errorMessage: '"w" parameter (width) cannot be an array' };
+    } else if (!/^[0-9]+$/.test(w)) {
+      return {
+        errorMessage: '"w" parameter (width) must be an integer greater than 0'
+      };
+    }
+    if (!q) {
+      return { errorMessage: '"q" parameter (quality) is required' };
+    } else if (Array.isArray(q)) {
+      return { errorMessage: '"q" parameter (quality) cannot be an array' };
+    } else if (!/^[0-9]+$/.test(q)) {
+      return {
+        errorMessage: '"q" parameter (quality) must be an integer between 1 and 100'
+      };
+    }
+    const width = parseInt(w, 10);
+    if (width <= 0 || isNaN(width)) {
+      return {
+        errorMessage: '"w" parameter (width) must be an integer greater than 0'
+      };
+    }
+    const sizes = [...deviceSizes || [], ...imageSizes || []];
+    const isValidSize = sizes.includes(width) || isDev && width <= BLUR_IMG_SIZE;
+    if (!isValidSize) {
+      return {
+        errorMessage: `"w" parameter (width) of ${width} is not allowed`
+      };
+    }
+    const quality = parseInt(q, 10);
+    if (isNaN(quality) || quality < 1 || quality > 100) {
+      return {
+        errorMessage: '"q" parameter (quality) must be an integer between 1 and 100'
+      };
+    }
+    const mimeType = getSupportedMimeType(formats || [], acceptHeader);
+    const isStatic = false;
+    return {
+      href,
+      sizes,
+      isAbsolute,
+      isStatic,
+      width,
+      quality,
+      mimeType,
+      minimumCacheTTL
+    };
+  }
+  static getCacheKey({
+    href,
+    width,
+    quality,
+    mimeType
+  }) {
+    return getHash([CACHE_VERSION, href, width, quality, mimeType]);
+  }
+  constructor({ distDir }) {
+    this.cacheDir = join(distDir, "cache", "images");
+  }
+  async get(cacheKey) {
+    try {
+      const cacheDir = join(this.cacheDir, cacheKey);
+      const files = await promises.readdir(cacheDir);
+      const now = Date.now();
+      for (const file of files) {
+        const [maxAgeSt, expireAtSt, etag, upstreamEtag, extension] = file.split(".", 5);
+        console.log(maxAgeSt, expireAtSt, etag, upstreamEtag, extension);
+        const buffer = await promises.readFile(join(cacheDir, file));
+        const expireAt = Number(expireAtSt);
+        const maxAge = Number(maxAgeSt);
+        return {
+          value: {
+            etag,
+            buffer,
+            extension,
+            upstreamEtag
+          },
+          revalidateAfter: Math.max(maxAge) * 1e3 + Date.now(),
+          curRevalidate: maxAge,
+          isStale: now > expireAt,
+          isFallback: false
+        };
+      }
+    } catch (_) {
+    }
+    return null;
+  }
+  async set(cacheKey, value, {
+    revalidate
+  }) {
+    if (typeof revalidate !== "number") {
+      throw new Error("invariant revalidate must be a number for image-cache");
+    }
+    const expireAt = Math.max(revalidate) * 1e3 + Date.now();
+    try {
+      await writeToCacheDir(
+        join(this.cacheDir, cacheKey),
+        value.extension,
+        revalidate,
+        expireAt,
+        value.buffer,
+        value.etag,
+        value.upstreamEtag
+      );
+    } catch (err) {
+      console.error(`Failed to write image to cache ${cacheKey}`, err);
+    }
+  }
+};
+function getSupportedMimeType(options, accept = "") {
+  const mimeType = (
+    /* mediaType(accept, options) */
+    "image/webp"
+  );
+  return accept.includes(mimeType) ? mimeType : "";
+}
+function getHash(items) {
+  const hash = createHash("sha256");
+  for (let item of items) {
+    if (typeof item === "number") hash.update(String(item));
+    else {
+      hash.update(item);
+    }
+  }
+  return hash.digest("base64url");
+}
+async function writeToCacheDir(dir, extension, maxAge, expireAt, buffer, etag, upstreamEtag) {
+  const filename = join(
+    dir,
+    `${maxAge}.${expireAt}.${etag}.${upstreamEtag}.${extension}`
+  );
+  await promises.rm(dir, { recursive: true, force: true }).catch(() => {
+  });
+  await promises.mkdir(dir, { recursive: true });
+  await promises.writeFile(filename, buffer);
+}
+export {
+  ImageOptimizerCache,
+  fetchExternalImage,
+  imageOptimizer
+};
+//# sourceMappingURL=index.mjs.map
