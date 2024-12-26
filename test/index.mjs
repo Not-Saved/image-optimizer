@@ -4,7 +4,6 @@ import {
   ImageOptimizerCache,
 } from "../dist/index.mjs";
 import http from "http";
-import sharp from "sharp";
 const hostname = "127.0.0.1";
 const port = 3000;
 
@@ -25,7 +24,7 @@ const server = http.createServer(async (req, res) => {
       if (!image || image.revalidateAfter < Date.now()) {
         const imageUpstream = await fetchExternalImage(imageUrl);
 
-        const optimizedImage = await imageOptimizer(sharp, imageUpstream, {
+        const optimizedImage = await imageOptimizer(imageUpstream, {
           width: 800,
           quality: 90,
           mimeType: "image/webp",

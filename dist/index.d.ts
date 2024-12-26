@@ -1,22 +1,11 @@
-import sharp from 'sharp';
-
-type SharpNamespace = typeof sharp;
 interface ImageUpstream {
     buffer: Buffer;
     contentType: string | null | undefined;
     cacheControl: string | null | undefined;
 }
-declare function imageOptimizer(sharp: SharpNamespace, imageUpstream: ImageUpstream, params: {
-    quality: number;
-    width: number;
-    mimeType: string;
-}): Promise<{
-    buffer: Buffer;
-    contentType: string;
-    maxAge: number;
-    error?: unknown;
-}>;
+
 declare function fetchExternalImage(href: string): Promise<ImageUpstream>;
+
 declare class ImageOptimizerCache {
     private cacheDir;
     static validateParams(acceptHeader: string, query: {
@@ -68,4 +57,15 @@ type IncrementalCacheValue = {
     upstreamEtag: string;
 };
 
-export { ImageOptimizerCache, fetchExternalImage, imageOptimizer };
+declare function imageOptimizer(imageUpstream: ImageUpstream, params: {
+    quality: number;
+    width: number;
+    mimeType: string;
+}): Promise<{
+    buffer: Buffer;
+    contentType: string;
+    maxAge: number;
+    error?: unknown;
+}>;
+
+export { ImageOptimizerCache, type ImageUpstream, fetchExternalImage, imageOptimizer };

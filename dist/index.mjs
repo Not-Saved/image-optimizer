@@ -1,7 +1,4 @@
-// src/index.ts
-import { createHash } from "crypto";
-import { promises } from "fs";
-import { join } from "path";
+// src/constants/index.ts
 var AVIF = "image/avif";
 var WEBP = "image/webp";
 var PNG = "image/png";
@@ -13,166 +10,8 @@ var TIFF = "image/tiff";
 var BMP = "image/bmp";
 var CACHE_VERSION = 4;
 var BLUR_IMG_SIZE = 8;
-var _sharp;
-function getSharp(sharp, concurrency) {
-  if (_sharp) {
-    return _sharp;
-  }
-  try {
-    _sharp = sharp;
-    if (_sharp && sharp.concurrency() > 1) {
-      const divisor = process.env.NODE_ENV === "development" ? 4 : 2;
-      _sharp.concurrency(
-        concurrency ?? Math.floor(Math.max(_sharp.concurrency() / divisor, 1))
-      );
-    }
-  } catch (e) {
-    throw e;
-  }
-  return _sharp;
-}
-async function imageOptimizer(sharp, imageUpstream, params) {
-  const { quality, width, mimeType } = params;
-  const { buffer: upstreamBuffer } = imageUpstream;
-  const maxAge = getMaxAge(imageUpstream.cacheControl);
-  const upstreamType = detectContentType(upstreamBuffer) || imageUpstream.contentType?.toLowerCase().trim();
-  if (upstreamType) {
-    if (upstreamType.startsWith("image/svg")) {
-      throw new Error(
-        '"url" parameter is valid but image type svg is not allowed'
-      );
-    }
-    if (!upstreamType.startsWith("image/") || upstreamType.includes(",")) {
-      throw new Error("The requested resource isn't a valid image.");
-    }
-  }
-  let contentType;
-  if (mimeType) {
-    contentType = mimeType;
-  } else {
-    contentType = JPEG;
-  }
-  try {
-    let optimizedBuffer = await optimizeImage({
-      sharp,
-      buffer: upstreamBuffer,
-      contentType,
-      quality,
-      width
-    });
-    return {
-      buffer: optimizedBuffer,
-      contentType,
-      maxAge: Math.max(maxAge, 60)
-    };
-  } catch (error) {
-    if (upstreamType) {
-      return {
-        buffer: upstreamBuffer,
-        contentType: upstreamType,
-        maxAge: 60,
-        error
-      };
-    } else {
-      throw new Error(
-        "Unable to optimize image and unable to fallback to upstream image"
-      );
-    }
-  }
-}
-async function optimizeImage({
-  sharp,
-  buffer,
-  contentType,
-  quality,
-  width,
-  height,
-  concurrency,
-  limitInputPixels,
-  sequentialRead,
-  timeoutInSeconds
-}) {
-  const _sharp2 = getSharp(sharp);
-  const transformer = _sharp2(buffer, {
-    limitInputPixels,
-    sequentialRead: sequentialRead ?? void 0
-  }).timeout({
-    seconds: timeoutInSeconds ?? 7
-  }).rotate();
-  if (height) {
-    transformer.resize(width, height);
-  } else {
-    transformer.resize(width, void 0, {
-      withoutEnlargement: true
-    });
-  }
-  if (contentType === AVIF) {
-    transformer.avif({
-      quality: Math.max(quality - 20, 1),
-      effort: 3
-    });
-  } else if (contentType === WEBP) {
-    transformer.webp({ quality });
-  } else if (contentType === PNG) {
-    transformer.png({ quality });
-  } else if (contentType === JPEG) {
-    transformer.jpeg({ quality, mozjpeg: true });
-  }
-  const optimizedBuffer = await transformer.toBuffer();
-  return optimizedBuffer;
-}
-async function fetchExternalImage(href) {
-  const res = await fetch(href, {
-    signal: AbortSignal.timeout(7e3)
-  }).catch((err) => err);
-  if (res instanceof Error) {
-    const err = res;
-    if (err.name === "TimeoutError") {
-      throw new Error(
-        '"url" parameter is valid but upstream response timed out'
-      );
-    }
-    throw err;
-  }
-  if (!res.ok) {
-    throw new Error(
-      '"url" parameter is valid but upstream response is invalid'
-    );
-  }
-  const buffer = Buffer.from(await res.arrayBuffer());
-  const contentType = res.headers.get("Content-Type");
-  const cacheControl = res.headers.get("Cache-Control");
-  return { buffer, contentType, cacheControl };
-}
-function parseCacheControl(str) {
-  const map = /* @__PURE__ */ new Map();
-  if (!str) {
-    return map;
-  }
-  for (let directive of str.split(",")) {
-    let [key, value] = directive.trim().split("=", 2);
-    key = key.toLowerCase();
-    if (value) {
-      value = value.toLowerCase();
-    }
-    map.set(key, value);
-  }
-  return map;
-}
-function getMaxAge(str) {
-  const map = parseCacheControl(str);
-  if (map) {
-    let age = map.get("s-maxage") || map.get("max-age") || "";
-    if (age.startsWith('"') && age.endsWith('"')) {
-      age = age.slice(1, -1);
-    }
-    const n = parseInt(age, 10);
-    if (!isNaN(n)) {
-      return n;
-    }
-  }
-  return 0;
-}
+
+// src/utils/detectContentType.ts
 function detectContentType(buffer) {
   if ([255, 216, 255].every((b, i) => buffer[i] === b)) {
     return JPEG;
@@ -212,6 +51,154 @@ function detectContentType(buffer) {
   }
   return null;
 }
+
+// src/sharp/getSharp.ts
+import sharp from "sharp";
+var _sharp;
+function getSharp(concurrency) {
+  if (_sharp) {
+    return _sharp;
+  }
+  try {
+    _sharp = sharp;
+    if (_sharp && sharp.concurrency() > 1) {
+      const divisor = process.env.NODE_ENV === "development" ? 4 : 2;
+      _sharp.concurrency(
+        concurrency ?? Math.floor(Math.max(_sharp.concurrency() / divisor, 1))
+      );
+    }
+  } catch (e) {
+    throw e;
+  }
+  return _sharp;
+}
+
+// src/sharp/optimizeImage.ts
+async function optimizeImage({
+  buffer,
+  contentType,
+  quality,
+  width,
+  height,
+  limitInputPixels,
+  sequentialRead,
+  timeoutInSeconds
+}) {
+  const _sharp2 = getSharp();
+  const transformer = _sharp2(buffer, {
+    limitInputPixels,
+    sequentialRead: sequentialRead ?? void 0
+  }).timeout({
+    seconds: timeoutInSeconds ?? 7
+  }).rotate();
+  if (height) {
+    transformer.resize(width, height);
+  } else {
+    transformer.resize(width, void 0, {
+      withoutEnlargement: true
+    });
+  }
+  if (contentType === AVIF) {
+    transformer.avif({
+      quality: Math.max(quality - 20, 1),
+      effort: 3
+    });
+  } else if (contentType === WEBP) {
+    transformer.webp({ quality });
+  } else if (contentType === PNG) {
+    transformer.png({ quality });
+  } else if (contentType === JPEG) {
+    transformer.jpeg({ quality, mozjpeg: true });
+  }
+  const optimizedBuffer = await transformer.toBuffer();
+  return optimizedBuffer;
+}
+
+// src/utils/parseCacheControl.ts
+function parseCacheControl(str) {
+  const map = /* @__PURE__ */ new Map();
+  if (!str) {
+    return map;
+  }
+  for (let directive of str.split(",")) {
+    let [key, value] = directive.trim().split("=", 2);
+    key = key.toLowerCase();
+    if (value) {
+      value = value.toLowerCase();
+    }
+    map.set(key, value);
+  }
+  return map;
+}
+
+// src/utils/getMaxAge.ts
+function getMaxAge(str) {
+  const map = parseCacheControl(str);
+  if (map) {
+    let age = map.get("s-maxage") || map.get("max-age") || "";
+    if (age.startsWith('"') && age.endsWith('"')) {
+      age = age.slice(1, -1);
+    }
+    const n = parseInt(age, 10);
+    if (!isNaN(n)) {
+      return n;
+    }
+  }
+  return 0;
+}
+
+// src/fetch/fetchExternalImage.ts
+async function fetchExternalImage(href) {
+  const res = await fetch(href, {
+    signal: AbortSignal.timeout(7e3)
+  }).catch((err) => err);
+  if (res instanceof Error) {
+    const err = res;
+    if (err.name === "TimeoutError") {
+      throw new Error(
+        '"url" parameter is valid but upstream response timed out'
+      );
+    }
+    throw err;
+  }
+  if (!res.ok) {
+    throw new Error(
+      '"url" parameter is valid but upstream response is invalid'
+    );
+  }
+  const buffer = Buffer.from(await res.arrayBuffer());
+  const contentType = res.headers.get("Content-Type");
+  const cacheControl = res.headers.get("Cache-Control");
+  return { buffer, contentType, cacheControl };
+}
+
+// src/cache/index.ts
+import { join } from "node:path";
+
+// src/utils/getHash.ts
+import { createHash } from "node:crypto";
+function getHash(items) {
+  const hash = createHash("sha256");
+  for (let item of items) {
+    if (typeof item === "number") hash.update(String(item));
+    else {
+      hash.update(item);
+    }
+  }
+  return hash.digest("base64url");
+}
+
+// src/utils/getSupportedMimeType.ts
+function getSupportedMimeType(options, accept = "") {
+  const mimeType = (
+    /* mediaType(accept, options) */
+    "image/webp"
+  );
+  return accept.includes(mimeType) ? mimeType : "";
+}
+
+// src/cache/index.ts
+import { promises } from "node:fs";
 var ImageOptimizerCache = class {
   static validateParams(acceptHeader, query, isDev) {
     const imageData = {
@@ -330,7 +317,6 @@ var ImageOptimizerCache = class {
       const now = Date.now();
       for (const file of files) {
         const [maxAgeSt, expireAtSt, etag, upstreamEtag, extension] = file.split(".", 5);
-        console.log(maxAgeSt, expireAtSt, etag, upstreamEtag, extension);
         const buffer = await promises.readFile(join(cacheDir, file));
         const expireAt = Number(expireAtSt);
         const maxAge = Number(maxAgeSt);
@@ -373,23 +359,6 @@ var ImageOptimizerCache = class {
     }
   }
 };
-function getSupportedMimeType(options, accept = "") {
-  const mimeType = (
-    /* mediaType(accept, options) */
-    "image/webp"
-  );
-  return accept.includes(mimeType) ? mimeType : "";
-}
-function getHash(items) {
-  const hash = createHash("sha256");
-  for (let item of items) {
-    if (typeof item === "number") hash.update(String(item));
-    else {
-      hash.update(item);
-    }
-  }
-  return hash.digest("base64url");
-}
 async function writeToCacheDir(dir, extension, maxAge, expireAt, buffer, etag, upstreamEtag) {
   const filename = join(
     dir,
@@ -399,6 +368,56 @@ async function writeToCacheDir(dir, extension, maxAge, expireAt, buffer, etag, u
   });
   await promises.mkdir(dir, { recursive: true });
   await promises.writeFile(filename, buffer);
+}
+
+// src/index.ts
+async function imageOptimizer(imageUpstream, params) {
+  const { quality, width, mimeType } = params;
+  const { buffer: upstreamBuffer } = imageUpstream;
+  const maxAge = getMaxAge(imageUpstream.cacheControl);
+  const upstreamType = imageUpstream.contentType?.toLowerCase().trim() || detectContentType(upstreamBuffer);
+  if (upstreamType) {
+    if (upstreamType.startsWith("image/svg")) {
+      throw new Error(
+        '"url" parameter is valid but image type svg is not allowed'
+      );
+    }
+    if (!upstreamType.startsWith("image/") || upstreamType.includes(",")) {
+      throw new Error("The requested resource isn't a valid image.");
+    }
+  }
+  let contentType;
+  if (mimeType) {
+    contentType = mimeType;
+  } else {
+    contentType = JPEG;
+  }
+  try {
+    let optimizedBuffer = await optimizeImage({
+      buffer: upstreamBuffer,
+      contentType,
+      quality,
+      width
+    });
+    return {
+      buffer: optimizedBuffer,
+      contentType,
+      maxAge: Math.max(maxAge, 60)
+    };
+  } catch (error) {
+    if (upstreamType) {
+      return {
+        buffer: upstreamBuffer,
+        contentType: upstreamType,
+        maxAge: 60,
+        error
+      };
+    } else {
+      throw new Error(
+        "Unable to optimize image and unable to fallback to upstream image"
+      );
+    }
+  }
 }
 export {
   ImageOptimizerCache,
