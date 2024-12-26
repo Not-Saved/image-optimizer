@@ -6,5 +6,11 @@ export default defineConfig({
   splitting: false,
   sourcemap: true,
   clean: true,
-  dts: true,
+  dts: {
+    entry: {
+      server: "src/server.ts",
+      client: "src/client.ts",
+    },
+  },
+  entryPoints: ["./src/server.ts", "./src/client.ts"],
 });

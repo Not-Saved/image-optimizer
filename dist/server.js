@@ -27,16 +27,16 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-// src/index.ts
-var index_exports = {};
-__export(index_exports, {
+// src/server.ts
+var server_exports = {};
+__export(server_exports, {
   ImageOptimizerCache: () => ImageOptimizerCache,
   fetchExternalImage: () => fetchExternalImage,
   imageOptimizer: () => imageOptimizer
 });
-module.exports = __toCommonJS(index_exports);
+module.exports = __toCommonJS(server_exports);
 
-// src/constants/index.ts
+// src/server/constants/index.ts
 var AVIF = "image/avif";
 var WEBP = "image/webp";
 var PNG = "image/png";
@@ -49,7 +49,7 @@ var BMP = "image/bmp";
 var CACHE_VERSION = 4;
 var BLUR_IMG_SIZE = 8;
 
-// src/utils/detectContentType.ts
+// src/server/utils/detectContentType.ts
 function detectContentType(buffer) {
   if ([255, 216, 255].every((b, i) => buffer[i] === b)) {
     return JPEG;
@@ -90,7 +90,7 @@ function detectContentType(buffer) {
   return null;
 }
 
-// src/sharp/getSharp.ts
+// src/server/sharp/getSharp.ts
 var import_sharp = __toESM(require("sharp"));
 var _sharp;
 function getSharp(concurrency) {
@@ -111,7 +111,7 @@ function getSharp(concurrency) {
   return _sharp;
 }
 
-// src/sharp/optimizeImage.ts
+// src/server/sharp/optimizeImage.ts
 async function optimizeImage({
   buffer,
   contentType,
@@ -152,7 +152,7 @@ async function optimizeImage({
   return optimizedBuffer;
 }
 
-// src/utils/parseCacheControl.ts
+// src/server/utils/parseCacheControl.ts
 function parseCacheControl(str) {
   const map = /* @__PURE__ */ new Map();
   if (!str) {
@@ -169,7 +169,7 @@ function parseCacheControl(str) {
   return map;
 }
 
-// src/utils/getMaxAge.ts
+// src/server/utils/getMaxAge.ts
 function getMaxAge(str) {
   const map = parseCacheControl(str);
   if (map) {
@@ -185,7 +185,7 @@ function getMaxAge(str) {
   return 0;
 }
 
-// src/fetch/fetchExternalImage.ts
+// src/server/fetch/fetchExternalImage.ts
 async function fetchExternalImage(href) {
   const res = await fetch(href, {
     signal: AbortSignal.timeout(7e3)
@@ -210,10 +210,10 @@ async function fetchExternalImage(href) {
   return { buffer, contentType, cacheControl };
 }
 
-// src/cache/index.ts
+// src/server/cache/index.ts
 var import_node_path = require("path");
 
-// src/utils/getHash.ts
+// src/server/utils/getHash.ts
 var import_node_crypto = require("crypto");
 function getHash(items) {
   const hash = (0, import_node_crypto.createHash)("sha256");
@@ -226,7 +226,7 @@ function getHash(items) {
   return hash.digest("base64url");
 }
 
-// src/utils/getSupportedMimeType.ts
+// src/server/utils/getSupportedMimeType.ts
 function getSupportedMimeType(options, accept = "") {
   const mimeType = (
     /* mediaType(accept, options) */
@@ -235,7 +235,7 @@ function getSupportedMimeType(options, accept = "") {
   return accept.includes(mimeType) ? mimeType : "";
 }
 
-// src/cache/index.ts
+// src/server/cache/index.ts
 var import_node_fs = require("fs");
 var ImageOptimizerCache = class {
   static validateParams(acceptHeader, query, isDev) {
@@ -408,7 +408,7 @@ async function writeToCacheDir(dir, extension, maxAge, expireAt, buffer, etag, u
   await import_node_fs.promises.writeFile(filename, buffer);
 }
 
-// src/index.ts
+// src/server.ts
 async function imageOptimizer(imageUpstream, params) {
   const { quality, width, mimeType } = params;
   const { buffer: upstreamBuffer } = imageUpstream;
@@ -463,4 +463,4 @@ async function imageOptimizer(imageUpstream, params) {
   fetchExternalImage,
   imageOptimizer
 });
-//# sourceMappingURL=index.js.map
+//# sourceMappingURL=server.js.map

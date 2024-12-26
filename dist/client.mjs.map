@@ -1,0 +1,1 @@
+{"version":3,"sources":["../src/client.ts"],"sourcesContent":["export function getProps() {\n  return \"props\";\n}\n"],"mappings":";AAAO,SAAS,WAAW;AACzB,SAAO;AACT;","names":[]}

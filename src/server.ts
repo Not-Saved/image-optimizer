@@ -1,12 +1,12 @@
-import { detectContentType } from "./utils/detectContentType";
-import { optimizeImage } from "./sharp/optimizeImage";
-import { JPEG } from "./constants";
-import { getMaxAge } from "./utils/getMaxAge";
-import { ImageUpstream } from "./types";
+import { detectContentType } from "./server/utils/detectContentType";
+import { optimizeImage } from "./server/sharp/optimizeImage";
+import { JPEG } from "./server/constants";
+import { getMaxAge } from "./server/utils/getMaxAge";
+import { ImageUpstream } from "./server/types";
 
-export * from "./fetch/fetchExternalImage";
-export * from "./types";
-export * from "./cache";
+export * from "./server/fetch/fetchExternalImage";
+export * from "./server/types";
+export * from "./server/cache";
 
 export async function imageOptimizer(
   imageUpstream: ImageUpstream,
