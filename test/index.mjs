@@ -2,7 +2,8 @@ import {
   imageOptimizer,
   fetchExternalImage,
   ImageOptimizerCache,
-} from "../dist/index.mjs";
+} from "../dist/server.mjs";
+import { generateImgAttrs } from "../dist/client.mjs";
 import http from "http";
 const hostname = "127.0.0.1";
 const port = 3000;
