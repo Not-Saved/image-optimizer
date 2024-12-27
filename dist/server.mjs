@@ -309,7 +309,6 @@ var ImageOptimizerCache = class {
     const expireAt = Math.max(value.maxAge) * 1e3 + Date.now();
     if (this.promisesCache.has(cacheKey)) {
       const incrementalCacheValuePromise2 = this.promisesCache.get(cacheKey);
-      console.log("REUSING PROMISED");
       const incrementalCacheValue2 = await incrementalCacheValuePromise2;
       return {
         value: incrementalCacheValue2,
