@@ -1,15 +1,4 @@
-type ImageLoaderProps = {
-    src: string;
-    width: number;
-    quality?: number;
-};
-type ImageConfigComplete = {
-    deviceSizes: number[];
-    imageSizes: number[];
-    path: string;
-    unoptimized: boolean;
-};
-type ImageConfig = Partial<ImageConfigComplete>;
+import { ImageConfig, ImageLoaderProps } from './index.js';
 
 type ImageLoaderWithConfig = (p: ImageLoaderProps & {
     config: Readonly<ImageConfig>;
@@ -29,6 +18,5 @@ type GenImgAttrsResult = {
     sizes: string | undefined;
 };
 declare function generateImgAttrs({ config, src, unoptimized, width, quality, sizes, loader, }: GenImgAttrsData): GenImgAttrsResult;
-declare const imageConfigDefault: ImageConfigComplete;
 
-export { type GenImgAttrsData, type GenImgAttrsResult, generateImgAttrs, imageConfigDefault };
+export { type GenImgAttrsData, type GenImgAttrsResult, generateImgAttrs };

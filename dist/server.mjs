@@ -1,4 +1,4 @@
-// src/server/constants/index.ts
+// src/server/constants/constants.ts
 var AVIF = "image/avif";
 var WEBP = "image/webp";
 var PNG = "image/png";
@@ -172,7 +172,7 @@ async function fetchExternalImage(href) {
   return { buffer, contentType, cacheControl };
 }
 
-// src/server/cache/index.ts
+// src/server/cache/ImageOptimizerCache.ts
 import { join } from "node:path";
 
 // src/server/utils/getHash.ts
@@ -197,107 +197,71 @@ function getSupportedMimeType(options, accept = "") {
   return accept.includes(mimeType) ? mimeType : "";
 }
 
-// src/server/cache/index.ts
+// src/server/cache/ImageOptimizerCache.ts
 import { promises } from "node:fs";
+
+// src/server/utils/hasLocalMatch.ts
+function matchLocalPattern(pattern, url) {
+  if (pattern.search !== void 0) {
+    if (pattern.search !== url.search) {
+      return false;
+    }
+  }
+  if (pattern.pathname !== url.pathname) {
+    return false;
+  }
+  return true;
+}
+function hasLocalMatch(localPatterns, urlPathAndQuery) {
+  if (!localPatterns) {
+    return true;
+  }
+  const url = new URL(urlPathAndQuery, "http://n");
+  return localPatterns.some((p) => matchLocalPattern(p, url));
+}
+
+// src/server/utils/hasRemoteMatch.ts
+function matchRemotePattern(pattern, url) {
+  if (pattern.protocol !== void 0) {
+    const actualProto = url.protocol.slice(0, -1);
+    if (pattern.protocol !== actualProto) {
+      return false;
+    }
+  }
+  if (pattern.port !== void 0) {
+    if (pattern.port !== url.port) {
+      return false;
+    }
+  }
+  if (pattern.hostname === void 0) {
+    throw new Error(
+      `Pattern should define hostname but found
+${JSON.stringify(pattern)}`
+    );
+  } else {
+    if (pattern.hostname !== url.hostname) {
+      return false;
+    }
+  }
+  if (pattern.search !== void 0) {
+    if (pattern.search !== url.search) {
+      return false;
+    }
+  }
+  if (pattern.hostname !== url.hostname) {
+    return false;
+  }
+  return true;
+}
+function hasRemoteMatch(remotePatterns, url) {
+  return remotePatterns.some((p) => matchRemotePattern(p, url));
+}
+
+// src/server/cache/ImageOptimizerCache.ts
 var ImageOptimizerCache = class {
-  static validateParams(acceptHeader, query, isDev) {
-    const imageData = {
-      deviceSizes: [],
-      imageSizes: [],
-      domains: [],
-      minimumCacheTTL: 60,
-      formats: ["image/webp"]
-    };
-    const {
-      deviceSizes = [],
-      imageSizes = [],
-      domains = [],
-      minimumCacheTTL = 60,
-      formats = ["image/webp"]
-    } = imageData;
-    const remotePatterns = [];
-    const localPatterns = [];
-    const { url, w, q } = query;
-    let href;
-    if (!url) {
-      return { errorMessage: '"url" parameter is required' };
-    } else if (Array.isArray(url)) {
-      return { errorMessage: '"url" parameter cannot be an array' };
-    }
-    if (url.length > 3072) {
-      return { errorMessage: '"url" parameter is too long' };
-    }
-    if (url.startsWith("//")) {
-      return {
-        errorMessage: '"url" parameter cannot be a protocol-relative URL (//)'
-      };
-    }
-    let isAbsolute;
-    if (url.startsWith("/")) {
-      href = url;
-      isAbsolute = false;
-    } else {
-      let hrefParsed;
-      try {
-        hrefParsed = new URL(url);
-        href = hrefParsed.toString();
-        isAbsolute = true;
-      } catch (_error) {
-        return { errorMessage: '"url" parameter is invalid' };
-      }
-      if (!["http:", "https:"].includes(hrefParsed.protocol)) {
-        return { errorMessage: '"url" parameter is invalid' };
-      }
-    }
-    if (!w) {
-      return { errorMessage: '"w" parameter (width) is required' };
-    } else if (Array.isArray(w)) {
-      return { errorMessage: '"w" parameter (width) cannot be an array' };
-    } else if (!/^[0-9]+$/.test(w)) {
-      return {
-        errorMessage: '"w" parameter (width) must be an integer greater than 0'
-      };
-    }
-    if (!q) {
-      return { errorMessage: '"q" parameter (quality) is required' };
-    } else if (Array.isArray(q)) {
-      return { errorMessage: '"q" parameter (quality) cannot be an array' };
-    } else if (!/^[0-9]+$/.test(q)) {
-      return {
-        errorMessage: '"q" parameter (quality) must be an integer between 1 and 100'
-      };
-    }
-    const width = parseInt(w, 10);
-    if (width <= 0 || isNaN(width)) {
-      return {
-        errorMessage: '"w" parameter (width) must be an integer greater than 0'
-      };
-    }
-    const sizes = [...deviceSizes || [], ...imageSizes || []];
-    const isValidSize = sizes.includes(width) || isDev && width <= BLUR_IMG_SIZE;
-    if (!isValidSize) {
-      return {
-        errorMessage: `"w" parameter (width) of ${width} is not allowed`
-      };
-    }
-    const quality = parseInt(q, 10);
-    if (isNaN(quality) || quality < 1 || quality > 100) {
-      return {
-        errorMessage: '"q" parameter (quality) must be an integer between 1 and 100'
-      };
-    }
-    const mimeType = getSupportedMimeType(formats || [], acceptHeader);
-    const isStatic = false;
-    return {
-      href,
-      sizes,
-      isAbsolute,
-      isStatic,
-      width,
-      quality,
-      mimeType,
-      minimumCacheTTL
-    };
+  constructor({ distDir }) {
+    this.promisesCache = /* @__PURE__ */ new Map();
+    this.cacheDir = join(distDir, "cache", "images");
   }
   static getCacheKey({
     href,
@@ -307,67 +271,173 @@ var ImageOptimizerCache = class {
   }) {
     return getHash([CACHE_VERSION, href, width, quality, mimeType]);
   }
-  constructor({ distDir }) {
-    this.cacheDir = join(distDir, "cache", "images");
-  }
   async get(cacheKey) {
     try {
       const cacheDir = join(this.cacheDir, cacheKey);
       const files = await promises.readdir(cacheDir);
       const now = Date.now();
       for (const file of files) {
-        const [maxAgeSt, expireAtSt, etag, upstreamEtag, extension] = file.split(".", 5);
+        const [
+          maxAgeSt,
+          expireAtSt,
+          /* etag, upstreamEtag, */
+          extension
+        ] = file.split(".", 5);
         const buffer = await promises.readFile(join(cacheDir, file));
         const expireAt = Number(expireAtSt);
         const maxAge = Number(maxAgeSt);
         return {
           value: {
-            etag,
+            // etag,
             buffer,
             extension,
-            upstreamEtag
+            maxAge
+            //  upstreamEtag,
           },
-          revalidateAfter: Math.max(maxAge) * 1e3 + Date.now(),
-          curRevalidate: maxAge,
-          isStale: now > expireAt,
-          isFallback: false
+          expireAt,
+          isStale: now > expireAt
         };
       }
     } catch (_) {
     }
     return null;
   }
-  async set(cacheKey, value, {
-    revalidate
-  }) {
-    if (typeof revalidate !== "number") {
+  async set(cacheKey, value) {
+    if (typeof value.maxAge !== "number") {
       throw new Error("invariant revalidate must be a number for image-cache");
     }
-    const expireAt = Math.max(revalidate) * 1e3 + Date.now();
-    try {
-      await writeToCacheDir(
-        join(this.cacheDir, cacheKey),
-        value.extension,
-        revalidate,
+    const expireAt = Math.max(value.maxAge) * 1e3 + Date.now();
+    if (this.promisesCache.has(cacheKey)) {
+      const incrementalCacheValuePromise2 = this.promisesCache.get(cacheKey);
+      console.log("REUSING PROMISED");
+      const incrementalCacheValue2 = await incrementalCacheValuePromise2;
+      return {
+        value: incrementalCacheValue2,
         expireAt,
-        value.buffer,
-        value.etag,
-        value.upstreamEtag
-      );
-    } catch (err) {
-      console.error(`Failed to write image to cache ${cacheKey}`, err);
+        isStale: false
+      };
     }
+    const incrementalCacheValuePromise = writeToCacheDir(
+      join(this.cacheDir, cacheKey),
+      value.extension,
+      value.maxAge,
+      expireAt,
+      value.buffer
+      /* value.etag,
+        value.upstreamEtag */
+    );
+    this.promisesCache.set(cacheKey, incrementalCacheValuePromise);
+    const incrementalCacheValue = await incrementalCacheValuePromise;
+    this.promisesCache.delete(cacheKey);
+    return {
+      value: incrementalCacheValue,
+      expireAt,
+      isStale: false
+    };
   }
 };
-async function writeToCacheDir(dir, extension, maxAge, expireAt, buffer, etag, upstreamEtag) {
-  const filename = join(
-    dir,
-    `${maxAge}.${expireAt}.${etag}.${upstreamEtag}.${extension}`
-  );
+async function writeToCacheDir(dir, extension, maxAge, expireAt, buffer) {
+  const filename = join(dir, `${maxAge}.${expireAt}.${extension}`);
   await promises.rm(dir, { recursive: true, force: true }).catch(() => {
   });
   await promises.mkdir(dir, { recursive: true });
   await promises.writeFile(filename, buffer);
+  return { buffer, extension, maxAge };
+}
+function validateParams(acceptHeader, query, config, isDev) {
+  const {
+    deviceSizes = [],
+    imageSizes = [],
+    remotePatterns,
+    localPatterns,
+    formats = ["image/webp"]
+  } = config;
+  const { url, w, q } = query;
+  let href;
+  if (!url) {
+    return { errorMessage: '"url" parameter is required' };
+  } else if (Array.isArray(url)) {
+    return { errorMessage: '"url" parameter cannot be an array' };
+  }
+  if (url.length > 3072) {
+    return { errorMessage: '"url" parameter is too long' };
+  }
+  if (url.startsWith("//")) {
+    return {
+      errorMessage: '"url" parameter cannot be a protocol-relative URL (//)'
+    };
+  }
+  let isAbsolute;
+  if (url.startsWith("/")) {
+    href = url;
+    isAbsolute = false;
+    if (!hasLocalMatch(localPatterns, url)) {
+      return { errorMessage: '"url" parameter is not allowed' };
+    }
+  } else {
+    let hrefParsed;
+    try {
+      hrefParsed = new URL(url);
+      href = hrefParsed.toString();
+      isAbsolute = true;
+    } catch (_error) {
+      return { errorMessage: '"url" parameter is invalid' };
+    }
+    if (!["http:", "https:"].includes(hrefParsed.protocol)) {
+      return { errorMessage: '"url" parameter is invalid' };
+    }
+    if (!hasRemoteMatch(remotePatterns, hrefParsed)) {
+      return { errorMessage: '"url" parameter is not allowed' };
+    }
+  }
+  if (!w) {
+    return { errorMessage: '"w" parameter (width) is required' };
+  } else if (Array.isArray(w)) {
+    return { errorMessage: '"w" parameter (width) cannot be an array' };
+  } else if (!/^[0-9]+$/.test(w)) {
+    return {
+      errorMessage: '"w" parameter (width) must be an integer greater than 0'
+    };
+  }
+  if (!q) {
+    return { errorMessage: '"q" parameter (quality) is required' };
+  } else if (Array.isArray(q)) {
+    return { errorMessage: '"q" parameter (quality) cannot be an array' };
+  } else if (!/^[0-9]+$/.test(q)) {
+    return {
+      errorMessage: '"q" parameter (quality) must be an integer between 1 and 100'
+    };
+  }
+  const width = parseInt(w, 10);
+  if (width <= 0 || isNaN(width)) {
+    return {
+      errorMessage: '"w" parameter (width) must be an integer greater than 0'
+    };
+  }
+  const sizes = [...deviceSizes || [], ...imageSizes || []];
+  const isValidSize = sizes.includes(width) || isDev && width <= BLUR_IMG_SIZE;
+  if (!isValidSize) {
+    return {
+      errorMessage: `"w" parameter (width) of ${width} is not allowed`
+    };
+  }
+  const quality = parseInt(q, 10);
+  if (isNaN(quality) || quality < 1 || quality > 100) {
+    return {
+      errorMessage: '"q" parameter (quality) must be an integer between 1 and 100'
+    };
+  }
+  const mimeType = getSupportedMimeType(formats || [], acceptHeader);
+  const isStatic = false;
+  return {
+    href,
+    sizes,
+    isAbsolute,
+    isStatic,
+    width,
+    quality,
+    mimeType
+  };
 }
 
 // src/server.ts
@@ -402,6 +472,7 @@ async function imageOptimizer(imageUpstream, params) {
     return {
       buffer: optimizedBuffer,
       contentType,
+      extension: contentType.replace("image/", ""),
       maxAge: Math.max(maxAge, 60)
     };
   } catch (error) {
@@ -409,6 +480,7 @@ async function imageOptimizer(imageUpstream, params) {
       return {
         buffer: upstreamBuffer,
         contentType: upstreamType,
+        extension: contentType.replace("image/", ""),
         maxAge: 60,
         error
       };
@@ -422,6 +494,7 @@ async function imageOptimizer(imageUpstream, params) {
 export {
   ImageOptimizerCache,
   fetchExternalImage,
-  imageOptimizer
+  imageOptimizer,
+  validateParams
 };
 //# sourceMappingURL=server.mjs.map

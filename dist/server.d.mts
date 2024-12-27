@@ -1,3 +1,5 @@
+import { ImageConfigComplete } from './index.mjs';
+
 interface ImageUpstream {
     buffer: Buffer;
     contentType: string | null | undefined;
@@ -8,22 +10,7 @@ declare function fetchExternalImage(href: string): Promise<ImageUpstream>;
 
 declare class ImageOptimizerCache {
     private cacheDir;
-    static validateParams(acceptHeader: string, query: {
-        url: string;
-        w: string;
-        q: string;
-    }, isDev: boolean): {
-        quality: number;
-        width: number;
-        mimeType: string;
-        href: string;
-        sizes: number[];
-        isAbsolute: boolean;
-        isStatic: boolean;
-        minimumCacheTTL: number;
-    } | {
-        errorMessage: string;
-    };
+    private promisesCache;
     static getCacheKey({ href, width, quality, mimeType, }: {
         href: string;
         width: number;
@@ -34,27 +21,32 @@ declare class ImageOptimizerCache {
         distDir: string;
     });
     get(cacheKey: string): Promise<IncrementalCacheEntry | null>;
-    set(cacheKey: string, value: IncrementalCacheValue, { revalidate, }: {
-        revalidate?: number | false;
-    }): Promise<void>;
+    set(cacheKey: string, value: IncrementalCacheValue): Promise<IncrementalCacheEntry>;
 }
 type IncrementalCacheEntry = {
-    value: {
-        etag: string;
-        buffer: Buffer;
-        extension: string;
-        upstreamEtag: string;
-    };
-    revalidateAfter: number;
-    curRevalidate: number;
+    value: IncrementalCacheValue;
+    expireAt: number;
     isStale: boolean;
-    isFallback: boolean;
 };
 type IncrementalCacheValue = {
     extension: string;
     buffer: Buffer;
-    etag: string;
-    upstreamEtag: string;
+    maxAge: number;
+};
+declare function validateParams(acceptHeader: string, query: {
+    url: string;
+    w: string;
+    q: string;
+}, config: ImageConfigComplete, isDev?: boolean): {
+    quality: number;
+    width: number;
+    mimeType: string;
+    href: string;
+    sizes: number[];
+    isAbsolute: boolean;
+    isStatic: boolean;
+} | {
+    errorMessage: string;
 };
 
 declare function imageOptimizer(imageUpstream: ImageUpstream, params: {
@@ -64,8 +56,9 @@ declare function imageOptimizer(imageUpstream: ImageUpstream, params: {
 }): Promise<{
     buffer: Buffer;
     contentType: string;
+    extension: string;
     maxAge: number;
     error?: unknown;
 }>;
 
-export { ImageOptimizerCache, type ImageUpstream, fetchExternalImage, imageOptimizer };
+export { ImageOptimizerCache, type ImageUpstream, type IncrementalCacheEntry, type IncrementalCacheValue, fetchExternalImage, imageOptimizer, validateParams };

@@ -1,4 +1,14 @@
-import { AVIF, BMP, GIF, ICO, JPEG, PNG, SVG, TIFF, WEBP } from "../constants";
+import {
+  AVIF,
+  BMP,
+  GIF,
+  ICO,
+  JPEG,
+  PNG,
+  SVG,
+  TIFF,
+  WEBP,
+} from "../constants/constants";
 
 /**
  * Inspects the first few bytes of a buffer to determine if

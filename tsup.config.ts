@@ -10,7 +10,8 @@ export default defineConfig({
     entry: {
       server: "src/server.ts",
       client: "src/client.ts",
+      index: "src/index.ts",
     },
   },
-  entryPoints: ["./src/server.ts", "./src/client.ts"],
+  entryPoints: ["./src/server.ts", "./src/client.ts", "./src/index.ts"],
 });

@@ -6,6 +6,11 @@
     "package.json"
   ],
   "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "import": "./dist/index.mjs"
+    },
     "./server": {
       "types": "./dist/server.d.ts",
       "require": "./dist/server.js",
@@ -32,6 +37,9 @@
     "typescript": "^5.7.2"
   },
   "dependencies": {
+    "sharp": "^0.33.5"
+  },
+  "peerDependencies": {
     "sharp": "^0.33.5"
   }
 }

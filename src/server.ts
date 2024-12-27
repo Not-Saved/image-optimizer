@@ -1,12 +1,12 @@
 import { detectContentType } from "./server/utils/detectContentType";
 import { optimizeImage } from "./server/sharp/optimizeImage";
-import { JPEG } from "./server/constants";
+import { JPEG } from "./server/constants/constants";
 import { getMaxAge } from "./server/utils/getMaxAge";
 import { ImageUpstream } from "./server/types";
 
 export * from "./server/fetch/fetchExternalImage";
 export * from "./server/types";
-export * from "./server/cache";
+export * from "./server/cache/ImageOptimizerCache";
 
 export async function imageOptimizer(
   imageUpstream: ImageUpstream,
@@ -18,6 +18,7 @@ export async function imageOptimizer(
 ): Promise<{
   buffer: Buffer;
   contentType: string;
+  extension: string;
   maxAge: number;
   error?: unknown;
 }> {
@@ -113,6 +114,7 @@ export async function imageOptimizer(
     return {
       buffer: optimizedBuffer,
       contentType,
+      extension: contentType.replace("image/", ""),
       maxAge: Math.max(maxAge, 60),
     };
   } catch (error) {
@@ -121,6 +123,7 @@ export async function imageOptimizer(
       return {
         buffer: upstreamBuffer,
         contentType: upstreamType,
+        extension: contentType.replace("image/", ""),
         maxAge: 60,
         error,
       };

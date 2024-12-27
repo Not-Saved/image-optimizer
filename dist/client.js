@@ -20,8 +20,7 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // src/client.ts
 var client_exports = {};
 __export(client_exports, {
-  generateImgAttrs: () => generateImgAttrs,
-  imageConfigDefault: () => imageConfigDefault
+  generateImgAttrs: () => generateImgAttrs
 });
 module.exports = __toCommonJS(client_exports);
 function generateImgAttrs({
@@ -103,15 +102,8 @@ function getWidths({ deviceSizes, imageSizes }, width, sizes) {
   }
   return { widths, kind: "x" };
 }
-var imageConfigDefault = {
-  deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
-  imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
-  path: "/api/image",
-  unoptimized: false
-};
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
-  generateImgAttrs,
-  imageConfigDefault
+  generateImgAttrs
 });
 //# sourceMappingURL=client.js.map

@@ -3,7 +3,7 @@ import {
   fetchExternalImage,
   ImageOptimizerCache,
 } from "../dist/server.mjs";
-import { generateImgAttrs } from "../dist/client.mjs";
+
 import http from "http";
 const hostname = "127.0.0.1";
 const port = 3000;
@@ -13,39 +13,34 @@ const cache = new ImageOptimizerCache({ distDir: "." });
 const server = http.createServer(async (req, res) => {
   if (req.method === "GET") {
     try {
-      const imageUrl = "https://picsum.photos/id/200/1920/1080"; // Replace with your image URL
-      const cacheKey = ImageOptimizerCache.getCacheKey({
-        href: imageUrl,
+      const imageParams = {
+        href: "https://picsum.photos/id/200/1920/1080",
         width: 800,
         quality: 90,
         mimeType: "image/webp",
-      });
+      };
+      const cacheKey = ImageOptimizerCache.getCacheKey(imageParams);
 
-      let image = await cache.get(cacheKey);
-      if (!image || image.revalidateAfter < Date.now()) {
-        const imageUpstream = await fetchExternalImage(imageUrl);
-
+      let cacheEntry = await cache.get(cacheKey);
+      let image = cacheEntry?.value;
+      if (!image || image.isStale) {
+        const imageUpstream = await fetchExternalImage(imageParams.href);
         const optimizedImage = await imageOptimizer(imageUpstream, {
-          width: 800,
-          quality: 90,
-          mimeType: "image/webp",
+          width: imageParams.width,
+          quality: imageParams.quality,
+          mimeType: imageParams.mimeType,
         });
-        await cache.set(
-          cacheKey,
-          {
-            buffer: optimizedImage.buffer,
-            etag: "",
-            extension: "webp",
-            upstreamEtag: "",
-          },
-          { revalidate: 1000 }
-        );
-        image = await cache.get(cacheKey);
+        image = await cache.set(cacheKey, {
+          buffer: optimizedImage.buffer,
+          extension: optimizedImage.extension,
+          maxAge: optimizedImage.maxAge,
+        });
       }
 
       res.statusCode = 200;
-      res.setHeader("Content-Type", "image/webp");
-      res.end(image.value.buffer);
+      res.setHeader("Content-Type", imageParams.mimeType);
+      //   res.setHeader("Content-Length", Buffer.byteLength(optimizedImage.buffer));
+      res.end(image.buffer);
     } catch (error) {
       console.log(error);
       res.statusCode = 500;

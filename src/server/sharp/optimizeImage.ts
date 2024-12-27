@@ -1,4 +1,4 @@
-import { AVIF, JPEG, PNG, WEBP } from "../constants";
+import { AVIF, JPEG, PNG, WEBP } from "../constants/constants";
 import { getSharp } from "./getSharp";
 
 export async function optimizeImage({
